@@ -1,0 +1,198 @@
+# ========== Secret: סיסמאות למסד ==========
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-secret
+  namespace: 0533orel-dev
+type: Opaque
+stringData:
+  MYSQL_ROOT_PASSWORD: "RootP@ss123"
+  MYSQL_DATABASE: "appdb"
+  MYSQL_USER: "appuser"
+  MYSQL_PASSWORD: "apppass"
+---
+# ========== PVC: אחסון מתמשך ל-MySQL ==========
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pvc
+  namespace: 0533orel-dev
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 1Gi
+---
+# ========== Deployment: MySQL ==========
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  namespace: 0533orel-dev
+  name: mysql
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 25%
+      maxUnavailable: 25%
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+        - name: mysql
+          # תמונה ידידותית ל-OpenShift (רץ non-root ותומך ב-UID שרירותי)
+          image: bitnami/mysql:8.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 3306
+              protocol: TCP
+          envFrom:
+            - secretRef:
+                name: mysql-secret
+          env:
+            # דרוש ל-bitnami/mysql כדי לאפשר התחברות מרחוק
+            - name: ALLOW_EMPTY_PASSWORD
+              value: "no"
+          readinessProbe:
+            exec:
+              command: ["/bin/sh","-c","mysqladmin ping -h 127.0.0.1 -uroot -p$MYSQL_ROOT_PASSWORD"]
+            initialDelaySeconds: 10
+            periodSeconds: 5
+          livenessProbe:
+            exec:
+              command: ["/bin/sh","-c","mysqladmin ping -h 127.0.0.1 -uroot -p$MYSQL_ROOT_PASSWORD"]
+            initialDelaySeconds: 20
+            periodSeconds: 10
+          volumeMounts:
+            - name: data
+              mountPath: /bitnami/mysql
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: mysql-pvc
+---
+# ========== Service: חשיפת MySQL בתוך הקלאסטר ==========
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+  namespace: 0533orel-dev
+spec:
+  selector:
+    app: mysql
+  ports:
+    - name: mysql
+      port: 3306
+      targetPort: 3306
+      protocol: TCP
+  type: ClusterIP
+---
+# ========== Deployment: ה-API שלך (התמונה שדחפת ל-Docker Hub) ==========
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  namespace: 0533orel-dev
+  name: data-loader-api
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: data-loader-api
+  template:
+    metadata:
+      labels:
+        app: data-loader-api
+    spec:
+      containers:
+        - name: api
+          image: 0533orel/data-loader-api:v3  # עדכן אם הטאג שונה
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8000
+              protocol: TCP
+          envFrom:
+            - secretRef:
+                name: mysql-secret
+          env:
+            - name: DB_HOST
+              value: "mysql"                   # שם ה-Service של MySQL
+            - name: DB_PORT
+              value: "3306"
+            - name: DB_NAME
+              valueFrom:
+                secretKeyRef:
+                  name: mysql-secret
+                  key: MYSQL_DATABASE
+            - name: DB_USER
+              valueFrom:
+                secretKeyRef:
+                  name: mysql-secret
+                  key: MYSQL_USER
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mysql-secret
+                  key: MYSQL_PASSWORD
+          readinessProbe:
+            httpGet:
+              path: /data
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /data
+              port: 8000
+            initialDelaySeconds: 20
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+---
+# ========== Service: חשיפת ה-API בתוך הקלאסטר ==========
+apiVersion: v1
+kind: Service
+metadata:
+  name: data-loader-api
+  namespace: 0533orel-dev
+spec:
+  selector:
+    app: data-loader-api
+  ports:
+    - name: http
+      port: 8000
+      targetPort: 8000
+      protocol: TCP
+  type: ClusterIP
+---
+# (אופציונלי) Route: חשיפת ה-API החוצה
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: data-loader-api
+  namespace: 0533orel-dev
+spec:
+  to:
+    kind: Service
+    name: data-loader-api
+  port:
+    targetPort: http
+  tls:
+    termination: edge
