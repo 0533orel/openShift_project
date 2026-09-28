@@ -63,6 +63,9 @@ openShift_SQL_docker_project/
 
 ## 🛠️ How to Deploy
 
+First follow [SECURITY.md](SECURITY.md) to create your own `mysql-secret`.
+The manifest does not contain passwords.
+
 1. **Login to OpenShift**  
    ```bash
    oc login ...
@@ -75,10 +78,7 @@ openShift_SQL_docker_project/
 
 3. **Apply MySQL Resources**  
    ```bash
-   oc apply -f infrastructure/k8s/mysql-secret.yaml
-   oc apply -f infrastructure/k8s/mysql-pvc.yaml
-   oc apply -f infrastructure/k8s/mysql-deployment.yaml
-   oc apply -f infrastructure/k8s/mysql-service.yaml
+   oc apply -f infrastructure/k8s/main-.yaml
    ```
 
 4. **Initialize Database**  
@@ -92,13 +92,12 @@ openShift_SQL_docker_project/
 
 5. **Deploy FastAPI Service**  
    ```bash
-   oc apply -f infrastructure/k8s/api-deployment.yaml
-   oc apply -f infrastructure/k8s/api-service.yaml
+   # API Deployment and Service are included in main-.yaml
    ```
 
 6. **Expose API with Route**  
    ```bash
-   oc expose svc/api
+   # Route is included in main-.yaml
    ```
 
 7. **Access API**  

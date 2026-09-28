@@ -1,16 +1,4 @@
-# ========== Secret: סיסמאות למסד ==========
-apiVersion: v1
-kind: Secret
-metadata:
-  name: mysql-secret
-  namespace: 0533orel-dev
-type: Opaque
-stringData:
-  MYSQL_ROOT_PASSWORD: "RootP@ss123"
-  MYSQL_DATABASE: "appdb"
-  MYSQL_USER: "appuser"
-  MYSQL_PASSWORD: "apppass"
----
+# Create mysql-secret separately; see SECURITY.md.
 # ========== PVC: אחסון מתמשך ל-MySQL ==========
 apiVersion: v1
 kind: PersistentVolumeClaim
